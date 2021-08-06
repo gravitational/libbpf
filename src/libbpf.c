@@ -1707,31 +1707,43 @@ out:
 	return err;
 }
 
+static const char *extract_line(const char **src, const char *src_end, char *dst, size_t dst_len) {
+	const char *eol;
+	size_t line_len, to_copy;
+
+	if (*src == src_end)
+		return NULL;
+
+	eol = memchr(*src, '\n', src_end - *src);
+	eol = (eol == NULL ? src_end : eol + 1);
+
+	line_len = eol - *src;
+	to_copy = min(dst_len-1, line_len);
+
+	memcpy(dst, *src, to_copy);
+	dst[to_copy] = '\0';
+
+	*src = eol;
+	return dst;
+}
+
 static int bpf_object__read_kconfig_mem(struct bpf_object *obj,
 					const char *config, void *data)
 {
 	char buf[PATH_MAX];
-	int err = 0;
-	FILE *file;
+	const char *config_end = config + strlen(config);
 
-	file = fmemopen((void *)config, strlen(config), "r");
-	if (!file) {
-		err = -errno;
-		pr_warn("failed to open in-memory Kconfig: %d\n", err);
-		return err;
-	}
-
-	while (fgets(buf, sizeof(buf), file)) {
-		err = bpf_object__process_kconfig_line(obj, buf, data);
+	while (extract_line(&config, config_end, buf, PATH_MAX)) {
+		printf("->: %s", buf);
+		int err = bpf_object__process_kconfig_line(obj, buf, data);
 		if (err) {
 			pr_warn("error parsing in-memory Kconfig line '%s': %d\n",
 				buf, err);
-			break;
+			return err;
 		}
 	}
 
-	fclose(file);
-	return err;
+	return 0;
 }
 
 static int bpf_object__init_kconfig_map(struct bpf_object *obj)
